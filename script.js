@@ -1,36 +1,61 @@
-const form = document.getElementById('flightForm');
-const resultDiv = document.getElementById('result');
+// Initialize the map
+const map = L.map('map').setView([48.8566, 2.3522], 5); // Centered on Europe
 
-form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const flightNumber = document.getElementById('flightNumber').value;
+// Add a tile layer (OpenStreetMap)
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
 
-    // Replace with your API endpoint
-    const API_URL = `https://opensky-network.org/api/flights?flight=${flightNumber}`;
+// Fetch flight data from OpenSky API
+async function fetchFlightData() {
+  const url = 'https://opensky-network.org/api/states/all';
 
-    try {
-        const response = await fetch(API_URL);
-        if (!response.ok) throw new Error('Flight not found');
-
-        const flightData = await response.json();
-        displayFlightData(flightData);
-    } catch (error) {
-        resultDiv.innerHTML = `<p>Error: ${error.message}</p>`;
-    }
-});
-
-function displayFlightData(data) {
-    resultDiv.innerHTML = `
-        <p>Flight: ${data[0].callsign}</p>
-        <p>Location: Lat ${data[0].latitude}, Lon ${data[0].longitude}</p>
-    `;
-    loadMap(data[0].latitude, data[0].longitude);
-}
-
-function loadMap(lat, lon) {
-    const map = new google.maps.Map(document.getElementById('map'), {
-        center: { lat, lng: lon },
-        zoom: 8,
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: 'Basic ' + btoa('username:password') // Replace with your OpenSky credentials
+      }
     });
-    new google.maps.Marker({ position: { lat, lng: lon }, map });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    updateMap(data.states);
+  } catch (error) {
+    console.error('Error fetching flight data:', error);
+  }
 }
+
+// Update the map with plane markers
+function updateMap(flights) {
+  // Clear all existing markers (optional depending on your use case)
+  map.eachLayer(layer => {
+    if (layer instanceof L.Marker) {
+      map.removeLayer(layer);
+    }
+  });
+
+  // Add markers for each plane
+  flights.forEach(flight => {
+    const [icao24, callsign, originCountry, timePosition, lastContact, longitude, latitude, baroAltitude] = flight;
+
+    // Only add markers for flights with valid coordinates
+    if (latitude && longitude) {
+      L.marker([latitude, longitude])
+        .addTo(map)
+        .bindPopup(`
+          <strong>Callsign:</strong> ${callsign || 'N/A'}<br>
+          <strong>Country:</strong> ${originCountry}<br>
+          <strong>Altitude:</strong> ${baroAltitude ? baroAltitude.toFixed(0) + ' m' : 'N/A'}
+        `);
+    }
+  });
+}
+
+// Fetch data every 10 seconds
+setInterval(fetchFlightData, 10000);
+
+// Fetch data on page load
+fetchFlightData();
